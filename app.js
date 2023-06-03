@@ -13,6 +13,11 @@ const mongoose = require("mongoose");
 const encrypt = require("mongoose-encryption");
 const md5 = require("md5");
 
+// Level 4 - Authentication | Salting
+
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
+
 const uri = "mongodb://0.0.0.0:27017/userDB";
 mongoose.connect(uri);
 
@@ -51,13 +56,26 @@ app.post("/register", function(req, res){
     // let password = req. body.password;
     
     // Level 3 - Authentication | Converting Password to an irreversible Hash.
-    let password = md5(req. body.password);
+    // let password = md5(req. body.password);
 
-    let newUser = new User({ email: username, password: password });
+    // Level 4 - Authentication | Salting (auto-gen a salt and hash):
+    bcrypt.hash(req. body.password, saltRounds, function(err, hash) {
+        
+        let password = hash;
+        if(err){ console.log(error); }
+
+        let newUser = new User({ email: username, password: password });
     
-    newUser.save()
-        .then(function(){ res.render("secrets"); })
-        .catch(function(error){ console.log(); });
+        newUser.save()
+            .then(function(){ res.render("secrets"); })
+            .catch(function(error){ console.log(); });
+    });
+
+    // let newUser = new User({ email: username, password: password });
+    
+    // newUser.save()
+    //     .then(function(){ res.render("secrets"); })
+    //     .catch(function(error){ console.log(); });
 });
 
 app.get("/login", function(req, res){
@@ -68,23 +86,30 @@ app.get("/login", function(req, res){
 app.post("/login", function(req, res){
 
     let username = req.body.username;
-    // let password = req.body.password;
+    let password = req.body.password;
 
     // Level 3 - Authentication | Converting the user-provided Password to the same irreversible Hash for Assertion.
-    let password = md5(req. body.password);
+    // let password = md5(req. body.password);
 
     User.findOne({ email: username })
         .then(function(foundUser){
 
-            if(foundUser.password === password){
+            // Level 4 - Authentication | Salting the user-provided Password to the same irreversible Hash for Assertion:
+            bcrypt.compare(password, foundUser.password, function(err, result) {
+               
+                if(result === true){ res.render("secrets"); }
+                if(err){ console.log("Invalid Password!\n"); }
+            });
 
-                res.render("secrets");
-            }
+            // if(foundUser.password === password){
 
-            else{
+            //     res.render("secrets");
+            // }
 
-                console.log("Invalid Password!\n");
-            }
+            // else{
+
+            //     console.log("Invalid Password!\n");
+            // }
         })
         .catch(function(error){ console.log(error); });
 });
