@@ -1,8 +1,3 @@
-// Authentication | Creating an Environment Variable to Safeguard Password Encryption Secret.
-
-// require("dotenv").config();
-// console.log(process.env.SECRET);
-
 const express = require("express");
 
 const ejs = require("ejs");
@@ -10,30 +5,48 @@ const bodyParser = require("body-parser");
 
 const mongoose = require("mongoose");
 
-const encrypt = require("mongoose-encryption");
-const md5 = require("md5");
-
-// Level 4 - Authentication | Salting
-
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
-
-const uri = "mongodb://0.0.0.0:27017/userDB";
-mongoose.connect(uri);
-
-const userSchema = new mongoose.Schema({ email: String, password: String });
-
-// Level 2 - Authentication | Encrypting Password
-// userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });
-
-const User = mongoose.model("User", userSchema);
-
 const app = express();
 
 app.set("view engine", "ejs");
 
 app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Level 5 - Authentication | Adding Cookies & Sessions.
+
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+
+const session = require("express-session");
+
+// Starting Session.
+app.use(session({
+
+    secret: "This is my secret.",
+    resave: false,
+
+    saveUninitialized: true,
+}));
+
+app.use(passport.initialize());     // Initialising Passport Package.
+app.use(passport.session());        // Using Passport to deal with the Session.
+
+const uri = "mongodb://0.0.0.0:27017/userDB";
+mongoose.connect(uri);
+
+const userSchema = new mongoose.Schema({ email: String, password: String });
+
+// Level 5 - Authentication | To Hash & Salt Password + Save Users in MongoDB Database
+userSchema.plugin(passportLocalMongoose);
+
+const User = mongoose.model("User", userSchema);
+
+// Level 5 - Authentication | Setting up Passport Local Strategy + Serializing & Deserializing Users
+
+passport.use(User.createStrategy());
+
+passport.serializeUser(User.serializeUser());       // Allows passport to create Cookie and stuffs user's identification.
+passport.deserializeUser(User.deserializeUser());   // Allows passport to crumble Cookie and identify user. 
 
 app.listen("3000", function(){
 
@@ -50,32 +63,36 @@ app.get("/register", function(req, res){
     res.render("register");
 });
 
+// Creating a secrets route to ensure the user can directly connect if cookie is present in browser.
+app.get("/secrets", function(req, res){
+
+    if(req.isAuthenticated()){
+      
+        res.render("secrets");
+    } else {
+
+        res.redirect("/login");
+    }
+});
+
 app.post("/register", function(req, res){
 
-    let username = req.body.username;
-    // let password = req. body.password;
-    
-    // Level 3 - Authentication | Converting Password to an irreversible Hash.
-    // let password = md5(req. body.password);
-
-    // Level 4 - Authentication | Salting (auto-gen a salt and hash):
-    bcrypt.hash(req. body.password, saltRounds, function(err, hash) {
+    // Using passport-local-mongoose to Register User.
+    User.register({ username: req.body.username }, req.body.password, function(err, user) {
         
-        let password = hash;
-        if(err){ console.log(error); }
+        if (err) { 
+            
+            console.log(err);
+            res.redirect("/register");
 
-        let newUser = new User({ email: username, password: password });
-    
-        newUser.save()
-            .then(function(){ res.render("secrets"); })
-            .catch(function(error){ console.log(); });
+         } else {
+
+            // Using passport to Authenticate.
+            passport.authenticate("local")(req, res, function(){
+                res.redirect("/secrets");   // Works only if Authentication is Successful.
+            });
+        }
     });
-
-    // let newUser = new User({ email: username, password: password });
-    
-    // newUser.save()
-    //     .then(function(){ res.render("secrets"); })
-    //     .catch(function(error){ console.log(); });
 });
 
 app.get("/login", function(req, res){
@@ -85,31 +102,20 @@ app.get("/login", function(req, res){
 
 app.post("/login", function(req, res){
 
-    let username = req.body.username;
-    let password = req.body.password;
+    const user = new User({ username: req.body.username, password: req.body.password });
 
-    // Level 3 - Authentication | Converting the user-provided Password to the same irreversible Hash for Assertion.
-    // let password = md5(req. body.password);
+    // Using passport to Log In.
+    req.login(user, function(err){
 
-    User.findOne({ email: username })
-        .then(function(foundUser){
+        if(err){ 
 
-            // Level 4 - Authentication | Salting the user-provided Password to the same irreversible Hash for Assertion:
-            bcrypt.compare(password, foundUser.password, function(err, result) {
-               
-                if(result === true){ res.render("secrets"); }
-                if(err){ console.log("Invalid Password!\n"); }
+            console.log(err);
+        } else {
+
+            // Using passport to Authenticate.
+            passport.authenticate("local")(req, res, function(){
+                res.redirect("/secrets");   // Works only if Authentication is Successful.
             });
-
-            // if(foundUser.password === password){
-
-            //     res.render("secrets");
-            // }
-
-            // else{
-
-            //     console.log("Invalid Password!\n");
-            // }
-        })
-        .catch(function(error){ console.log(error); });
+        }
+    });
 });
