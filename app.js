@@ -47,7 +47,9 @@ const userSchema = new mongoose.Schema({
     email: String, 
     password: String,
 
-    googleId: String
+    googleId: String,
+
+    secret: String
 });
 
 // Level 5 - Authentication | To Hash & Salt Password + Save Users in MongoDB Database
@@ -141,10 +143,16 @@ app.get("/secrets", function(req, res){
 
     if(req.isAuthenticated()){
       
-        res.render("secrets");
-    } else {
+      User.find({ "secret": { $ne: null } })
+        .then(function(foundUsers){
+          
+          res.render("secrets", { usersWithSecrets: foundUsers });
+        })
+        .catch(function (error){ console.log(error); });
 
-        res.redirect("/login");
+    } else {
+      res.redirect("/login");
+
     }
 });
 
@@ -193,7 +201,7 @@ app.post("/login", function(req, res){
     });
 });
 
-app.get('/logout', function(req, res, next){
+app.get("/logout", function(req, res, next){
     
     // Using passport to Log Out.
     req.logout(function(err) {
@@ -202,3 +210,31 @@ app.get('/logout', function(req, res, next){
         res.redirect('/');
     });
   });
+
+app.get("/submit", function(req, res){
+
+  if(req.isAuthenticated()){
+    res.render("submit");
+  
+  } else {
+    res.redirect("/login");
+  }
+});
+
+app.post("/submit", function(req, res){
+
+  console.log("\nCurrent User:\n");
+  console.log(req.user);
+
+  console.log("\nSecret:");
+  console.log(req.body.secret);
+
+  User.findById(req.user.id)
+    .then(function (foundUser){
+
+      foundUser.secret = req.body.secret;
+      foundUser.save().then(function (){ res.redirect("/secrets") });
+    })
+    .catch(function (error){ console.log(error); }); 
+
+});
